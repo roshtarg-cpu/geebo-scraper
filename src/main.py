@@ -3,7 +3,8 @@ Geebo Scraper - Extract classifieds listings from Geebo.com
 """
 from datetime import datetime, timezone
 from apify import Actor
-from camoufox.async_api import AsyncCamoufox
+import httpx
+from bs4 import BeautifulSoup
 import re
 
 
@@ -17,138 +18,90 @@ async def main():
             actor_input = {}
         
         category = actor_input.get('category', 'jobs')
-        location = actor_input.get('location', 'New York')
-        min_price = actor_input.get('minPrice', 0)
-        max_price = actor_input.get('maxPrice', 999999)
-        max_results = actor_input.get('maxResults', 3)
-        proxy_config = actor_input.get('proxyConfiguration', {
-            'useApifyProxy': True,
-            'apifyProxyGroups': ['RESIDENTIAL']
-        })
+        location = actor_input.get('location', '')
+        max_items = actor_input.get('maxItems', 10)
         
-        Actor.log.info(f'Category: {category}, Location: {location}, Max: {max_results}')
+        Actor.log.info(f'Category: {category}, Location: {location}, Max: {max_items}')
         
-        # Get proxy configuration for Camoufox
-        proxy_config_dict = None
-        if proxy_config and proxy_config.get('useApifyProxy'):
-            proxy_password = Actor.config.proxy_password
-            if proxy_password:
-                proxy_config_dict = {
-                    'server': 'http://proxy.apify.com:8000',
-                    'username': 'auto',
-                    'password': proxy_password
-                }
-        
-        # Build search URL - Geebo uses simple URL structure
-        location_slug = location.lower().replace(' ', '-').replace(',', '')
-        category_slug = category.lower().replace(' ', '-')
-        search_url = f'https://www.geebo.com/{location_slug}/{category_slug}'
-        
-        Actor.log.info(f'Search URL: {search_url}')
+        # Build URL - geebo.com/jobs-online/list/ works
+        if category == 'jobs':
+            base_url = 'https://geebo.com/jobs-online/list/'
+        else:
+            base_url = f'https://geebo.com/{category}/list/'
         
         results_count = 0
         
-        # Launch browser with Camoufox
-        async with AsyncCamoufox(
-            headless=True,
-            proxy=proxy_config_dict
-        ) as browser:
-            page = await browser.new_page()
-            
-            try:
-                await page.goto(search_url, timeout=60000)
-                await page.wait_for_timeout(3000)
+        try:
+            # Fetch with httpx (no browser needed - simple HTTP works)
+            Actor.log.info(f'Fetching {base_url}')
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                response = await client.get(
+                    base_url,
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                )
                 
-                # Extract listings using multiple selector strategies
-                listings = await page.query_selector_all('article')
-                if not listings:
-                    listings = await page.query_selector_all('div[class*="listing"]')
-                if not listings:
-                    listings = await page.query_selector_all('div[class*="item"]')
-                if not listings:
-                    listings = await page.query_selector_all('li')
+                Actor.log.info(f'HTTP {response.status_code}')
                 
-                Actor.log.info(f'Found {len(listings)} potential listings')
+                if response.status_code != 200:
+                    Actor.log.error(f'Failed to fetch: HTTP {response.status_code}')
+                    return
                 
-                for listing in listings[:max_results]:
-                    if results_count >= max_results:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Find job listings - geebo uses <table class="element">
+                listings = soup.find_all('table', class_='element')
+                
+                Actor.log.info(f'Found {len(listings)} listings')
+                
+                for listing in listings[:max_items]:
+                    if results_count >= max_items:
                         break
                     
                     try:
-                        # Extract title
-                        title_elem = await listing.query_selector('h1, h2, h3, h4, a')
-                        title = await title_elem.inner_text() if title_elem else None
+                        # Extract title - <a class="title">
+                        title_elem = listing.find('a', class_='title')
+                        title = title_elem.get_text().strip() if title_elem else None
                         if not title:
                             continue
-                        title = title.strip()
                         
                         # Extract URL
-                        link_elem = await listing.query_selector('a[href]')
-                        url = await link_elem.get_attribute('href') if link_elem else None
-                        if url and not url.startswith('http'):
-                            url = f'https://www.geebo.com{url}'
+                        url = title_elem['href'] if title_elem and title_elem.get('href') else None
                         
-                        # Extract price
-                        price_text = await listing.inner_text()
-                        price_match = re.search(r'\$(\d+(?:,\d{3})*(?:\.\d{2})?)', price_text)
-                        price = price_match.group(0) if price_match else None
+                        # Extract location - <span class="location">
+                        location_elem = listing.find('span', class_='location')
+                        job_location = location_elem.get_text().strip() if location_elem else None
                         
-                        # Extract location
-                        loc_elem = await listing.query_selector('[class*="location"], [class*="city"]')
-                        loc = await loc_elem.inner_text() if loc_elem else location
+                        # Extract company - <div class="company">
+                        company_elem = listing.find('div', class_='company')
+                        company = company_elem.get_text().strip() if company_elem else None
                         
-                        # Extract description
-                        desc_elem = await listing.query_selector('p')
-                        description = await desc_elem.inner_text() if desc_elem else None
-                        if description:
-                            description = description.strip()[:500]
+                        # Extract description - <div class="brief">
+                        brief_elem = listing.find('div', class_='brief')
+                        description = brief_elem.get_text().strip() if brief_elem else None
                         
-                        # Extract image
-                        img_elem = await listing.query_selector('img[src]')
-                        image = await img_elem.get_attribute('src') if img_elem else None
-                        if image and not image.startswith('http'):
-                            if image.startswith('//'):
-                                image = f'https:{image}'
-                            elif image.startswith('/'):
-                                image = f'https://www.geebo.com{image}'
+                        # Clean up description (remove company if duplicated)
+                        if description and company:
+                            description = description.replace(company, '').strip()
                         
-                        # Build result
                         result = {
-                            'url': url or search_url,
+                            'url': url,
                             'title': title,
-                            'price': price,
-                            'currency': 'USD' if price else None,
-                            'location': loc.strip() if loc else None,
+                            'company': company,
+                            'location': job_location,
                             'description': description,
-                            'image': image,
                             'category': category,
                             'scrapedAt': datetime.now(timezone.utc).isoformat()
                         }
                         
-                        # Push result immediately
                         await Actor.push_data(result)
                         results_count += 1
-                        Actor.log.info(f'Scraped: {title[:50]}')
                         
                     except Exception as e:
-                        Actor.log.warning(f'Failed to extract listing: {e}')
+                        Actor.log.error(f'Error processing listing: {e}')
                         continue
                 
-            except Exception as e:
-                Actor.log.error(f'Error during scraping: {e}')
-            
-            finally:
-                await page.close()
-        
-        Actor.log.info(f'Scraping completed. Total items: {results_count}')
-        
-        # Save task metadata
-        env = Actor.get_env()
-        await Actor.set_value('SAVED-TASK', {
-            'actorId': env.get('actor_id'),
-            'actorRunId': env.get('actor_run_id'),
-            'defaultDatasetId': env.get('default_dataset_id'),
-            'startedAt': env.get('started_at'),
-            'input': actor_input,
-            'stats': {'itemsScraped': results_count}
-        })
+                Actor.log.info(f'Successfully scraped {results_count} items')
+                
+        except Exception as e:
+            Actor.log.error(f'Failed to scrape: {e}')
+            raise
