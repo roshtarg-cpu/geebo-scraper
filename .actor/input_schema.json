@@ -1,0 +1,67 @@
+{
+  "$schema": "https://apify.com/schemas/v1/input.ide.json",
+  "title": "Input schema",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "category": {
+      "type": "string",
+      "title": "Category",
+      "description": "Select category to scrape from Geebo classifieds",
+      "editor": "select",
+      "enum": [
+        "jobs",
+        "housing",
+        "for-sale",
+        "services",
+        "community",
+        "personals",
+        "gigs"
+      ],
+      "prefill": "jobs"
+    },
+    "location": {
+      "type": "string",
+      "title": "Location",
+      "description": "City, state, or metro area to filter results",
+      "editor": "textfield",
+      "prefill": "New York"
+    },
+    "minPrice": {
+      "type": "integer",
+      "title": "Minimum Price",
+      "description": "Filter results by minimum price (leave 0 for no limit)",
+      "editor": "number",
+      "minimum": 0,
+      "prefill": 0
+    },
+    "maxPrice": {
+      "type": "integer",
+      "title": "Maximum Price",
+      "description": "Filter results by maximum price (leave 999999 for no limit)",
+      "editor": "number",
+      "minimum": 0,
+      "prefill": 999999
+    },
+    "maxResults": {
+      "type": "integer",
+      "title": "Max Results",
+      "description": "Maximum number of results to scrape (higher values increase cost)",
+      "default": 3,
+      "minimum": 1,
+      "maximum": 10000,
+      "editor": "number",
+      "prefill": 3
+    },
+    "proxyConfiguration": {
+      "type": "object",
+      "title": "Proxy Configuration",
+      "description": "Select proxy group (RESIDENTIAL recommended for best reliability)",
+      "editor": "proxy",
+      "default": {
+        "useApifyProxy": true,
+        "apifyProxyGroups": ["RESIDENTIAL"]
+      }
+    }
+  }
+}
