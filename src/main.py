@@ -28,12 +28,16 @@ async def main():
         
         Actor.log.info(f'Category: {category}, Location: {location}, Max: {max_results}')
         
-        # Get proxy URL
-        proxy_url = None
+        # Get proxy configuration for Camoufox
+        proxy_config_dict = None
         if proxy_config and proxy_config.get('useApifyProxy'):
             proxy_password = Actor.config.proxy_password
             if proxy_password:
-                proxy_url = f"http://auto:{proxy_password}@proxy.apify.com:8000"
+                proxy_config_dict = {
+                    'server': 'http://proxy.apify.com:8000',
+                    'username': 'auto',
+                    'password': proxy_password
+                }
         
         # Build search URL - Geebo uses simple URL structure
         location_slug = location.lower().replace(' ', '-').replace(',', '')
@@ -47,7 +51,7 @@ async def main():
         # Launch browser with Camoufox
         async with AsyncCamoufox(
             headless=True,
-            proxy=proxy_url
+            proxy=proxy_config_dict
         ) as browser:
             page = await browser.new_page()
             
