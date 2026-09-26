@@ -31,9 +31,9 @@ async def main():
         # Get proxy URL
         proxy_url = None
         if proxy_config and proxy_config.get('useApifyProxy'):
-            proxy_url = Actor.create_proxy_configuration(proxy_config)
-            if proxy_url:
-                proxy_url = proxy_url.get('new_url')()
+            proxy_password = Actor.config.proxy_password
+            if proxy_password:
+                proxy_url = f"http://auto:{proxy_password}@proxy.apify.com:8000"
         
         # Build search URL - Geebo uses simple URL structure
         location_slug = location.lower().replace(' ', '-').replace(',', '')
