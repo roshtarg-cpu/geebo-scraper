@@ -51,7 +51,7 @@ async def main():
                 'follow_redirects': True
             }
             if proxy_url:
-                client_kwargs['proxies'] = {'http://': proxy_url, 'https://': proxy_url}
+                client_kwargs['proxy'] = proxy_url  # httpx uses 'proxy' not 'proxies'
             
             async with httpx.AsyncClient(**client_kwargs) as client:
                 response = await client.get(
