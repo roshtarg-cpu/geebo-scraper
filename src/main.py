@@ -21,8 +21,9 @@ async def main():
         proxy_config = actor_input.get('proxyConfiguration', {})
         proxy_url = None
         if proxy_config and proxy_config.get('useApifyProxy'):
-            # Build Apify proxy URL
-            proxy_password = Actor.config.proxy_password
+            # SDK 3.x: get proxy password from environment
+            import os
+            proxy_password = os.getenv('APIFY_PROXY_PASSWORD')
             if proxy_password:
                 proxy_url = f'http://auto:{proxy_password}@proxy.apify.com:8000'
                 Actor.log.info('Using Apify proxy')
