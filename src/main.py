@@ -12,7 +12,7 @@ async def main():
         Actor.log.info('Geebo Scraper starting...')
         
         # Get input
-        actor_input = Actor.get_env()['input']
+        actor_input = await Actor.get_input()
         if not actor_input:
             actor_input = {}
         
