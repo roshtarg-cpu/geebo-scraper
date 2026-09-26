@@ -17,6 +17,16 @@ async def main():
         if not actor_input:
             actor_input = {}
         
+        # Get proxy configuration
+        proxy_config = actor_input.get('proxyConfiguration', {})
+        proxy_url = None
+        if proxy_config and proxy_config.get('useApifyProxy'):
+            # Build Apify proxy URL
+            proxy_password = Actor.config.proxy_password
+            if proxy_password:
+                proxy_url = f'http://auto:{proxy_password}@proxy.apify.com:8000'
+                Actor.log.info('Using Apify proxy')
+        
         category = actor_input.get('category', 'jobs')
         location = actor_input.get('location', '')
         max_items = actor_input.get('maxItems', 10)
@@ -32,9 +42,17 @@ async def main():
         results_count = 0
         
         try:
-            # Fetch with httpx (no browser needed - simple HTTP works)
+            # Fetch with httpx (with proxy if configured)
             Actor.log.info(f'Fetching {base_url}')
-            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            
+            client_kwargs = {
+                'timeout': 30.0,
+                'follow_redirects': True
+            }
+            if proxy_url:
+                client_kwargs['proxies'] = {'http://': proxy_url, 'https://': proxy_url}
+            
+            async with httpx.AsyncClient(**client_kwargs) as client:
                 response = await client.get(
                     base_url,
                     headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
